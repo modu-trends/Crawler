@@ -5,24 +5,46 @@ import datetime
 from bs4 import BeautifulSoup
 
 
-def insert(curs, data):
+def insert(curs, data): 
+# insert data into database
 	try:
-		sql = """INSERT INTO articles (id, title, agreement, provider, category, created_at, finished_at, crawled_at, content)
-				VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""	
+		sql = """INSERT INTO articles (id, title, agreement, provider, category, created_at, finished_at, crawled_at, content, status)
+				VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
 		curs.execute(sql, (data['id'], data['title'], data['agreement'], data['provider'], data['category'], 
-		                       data['created_at'], data['finished_at'], data['crawled_at'], data['content']))
+		                       data['created_at'], data['finished_at'], data['crawled_at'], data['content'], data['status']))
 		conn.commit()
 
 	except:
-	    print("# except!!")
+	    print("# insert except!!")
 
-def parse_json_data(data_in):
+def update(curs, data):
+# update data from database
+	try:
+		sql = """UPDATE articles SET title = %s, agreement = %s, provider = %s, category = %s, created_at = %s, 
+				finished_at = %s, crawled_at = %s, content = %s, status = %s WHERE id = %s"""	
 
+		curs.execute(sql, (data['title'], data['agreement'], data['provider'], data['category'], data['created_at'], 
+							data['finished_at'], data['crawled_at'], data['content'], data['status'],data['id']))
+		conn.commit()
+
+	except:
+	    print("# update except!!")
+
+def parse_json_data(data_in, only):
+# parse json data
 	data = {}
 	json_data = data_in
 	if json_data['status'] == "ok":
 	    for item in json_data['item']:
+
+	    	# check if item is expired
+	        sql = "SELECT status FROM articles WHERE id = %s"
+	        curs.execute(sql, (item['id']))
+	        status = curs.fetchone()
+	        if status != None: # if item already exists
+	        	if status[0] == '1': # if item is expired
+	        	    return False	
 
 	        data['id'] = item['id'] # 408609
 	        data['title'] = item['title']
@@ -32,6 +54,10 @@ def parse_json_data(data_in):
 	        data['created_at'] = item['created'] # 2018-10-17
 	        data['finished_at'] = item['finished'] # 2018-11-16
 	        data['crawled_at'] = time.strftime('%Y-%m-%d %H:%M:%S')  # 2019-08-08 00:00:35
+	        if only == 1:
+	        	data['status'] = 0 # in progress
+	        else:
+	        	data['status'] = 1 # expired
 
 	        req = requests.get(
 	            'https://www1.president.go.kr/petitions/'+str(item['id']))
@@ -45,19 +71,21 @@ def parse_json_data(data_in):
 	        for content in contents:
 	            data['content'] = content.text
 
-	        #insert(curs, data)
-	        time.sleep(1)
+	        print(data['id'])
+
+	        sql = "SELECT * FROM articles WHERE id = %s"
+	        if(curs.execute(sql, (data['id']))): # if item already exists	      
+	        	update(curs, data)	        	
+	        else:
+	        	insert(curs, data)
+
+	        time.sleep(0.01)
 
 	else:
 	    print("error!")
 
-def request(curs, api, headers):
-
-	#sql = """SELECT MAX(ID) FROM articles"""
-	#index = curs.execute(sql)
-	#print("max id:")
-	#print(index)
-
+def request_expired(curs, api, headers):
+# request data expired 
 	param = {
 	    'c': '0', # category
 	    'only': '2', # 1: in progress / 2: expired (21)
@@ -68,8 +96,33 @@ def request(curs, api, headers):
 	while True:
 		res = requests.post(api, headers=headers, data=param)
 		json_data = res.json()
-		parse_json_data(json_data)
+		if(len(json_data['item'])) == 0: # end of page
+			print("end of page: no more data!")
+			break
+		parse_json_data(json_data, param['only'])
 		param['page'] = param['page'] + 1        
+
+def request_progress(curs, api, headers):
+# request data in progress
+	param = {
+	    'c': '0', # category
+	    'only': '1', # 1: in progress / 2: expired (21)
+	    'page': 1,
+	    'order': '1' # 1: sort by most recent / 2: sort by recommended
+	}
+
+	while True:
+		res = requests.post(api, headers=headers, data=param)
+		json_data = res.json()
+		if(len(json_data['item'])) == 0: # end of page
+			print("end of page: no more data!")
+			break
+		result = parse_json_data(json_data, param['only'])
+		if result == False:
+			print("end of new data")
+			break
+		param['page'] = param['page'] + 1  
+
 
 if __name__ == "__main__":
 
@@ -95,4 +148,14 @@ if __name__ == "__main__":
         'X-Requested-With': 'XMLHttpRequest'
     }
 
-    request(curs, api, headers)
+#    sql = "SELECT COUNT(*) FROM articles"
+#    curs.execute(sql)
+#    count = curs.fetchone()[0]
+
+#    if(count == 0):
+    request_expired(curs, api, headers)
+    request_progress(curs, api, headers)
+
+#    else:
+#    	request_progress(curs, api, headers)   	
+#    	request_expired(curs, api, headers)
