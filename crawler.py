@@ -6,7 +6,6 @@ import sys
 from bs4 import BeautifulSoup
 #import date
 
-
 def insert(curs, data):
 # insert data into database
     try:
@@ -103,7 +102,7 @@ def parse_json_data(data_in, only):
             data['created_at'] = item['created'] # 2018-10-17
             data['finished_at'] = item['finished'] # 2018-11-16
             data['crawled_at'] = time.strftime('%Y-%m-%d')  # 2019-08-08 00:00:35
-            if only == 1:
+            if only == '1':
                 data['status'] = 0 # in progress
             else:
                 data['status'] = 1 # expired
@@ -115,8 +114,6 @@ def parse_json_data(data_in, only):
                 print("# request except!!")
                 sys.exit()
 
-
-
             soup = BeautifulSoup(html, 'html.parser')
 
             contents = soup.select(
@@ -127,8 +124,6 @@ def parse_json_data(data_in, only):
                 data['content'] = content.text
             data['disagreement'] = 0
             data['block'] = 0
-
-
 
             print(data['id'], data['category'])
 
@@ -183,7 +178,6 @@ def request_progress(curs, api, headers):
             break
         param['page'] = param['page'] + 1
 
-
 if __name__ == "__main__":
 
     conn = pymysql.connect(host='127.0.0.1', port=3306, user='modutrend', password='trend1q2w3e!@',
@@ -208,14 +202,5 @@ if __name__ == "__main__":
         'X-Requested-With': 'XMLHttpRequest'
     }
 
-#    sql = "SELECT COUNT(*) FROM articles"
-#    curs.execute(sql)
-#    count = curs.fetchone()[0]
-
-#    if(count == 0):
     request_expired(curs, api, headers)
     request_progress(curs, api, headers)
-
-#    else:
-#        request_progress(curs, api, headers)
-#        request_expired(curs, api, headers)
